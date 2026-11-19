@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="KnockKnockClient/KnockKnockClient.csproj" />
+  <Project Path="KnockKnockServer/KnockKnockServer.csproj" />
+</Solution>
