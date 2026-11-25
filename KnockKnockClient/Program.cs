@@ -11,9 +11,9 @@ namespace KnockKnockClient
         static void Main(string[] args)
         {
 
-
+            int port = 5000;
             using TcpClient client = new TcpClient();
-            client.Connect("localhost", 5000);
+            client.Connect("localhost", port);
 
             Console.WriteLine("Connected to server.");
 
