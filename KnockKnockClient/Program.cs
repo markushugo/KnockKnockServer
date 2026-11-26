@@ -19,31 +19,52 @@ namespace KnockKnockClient
 
             using NetworkStream stream = client.GetStream();
 
+            UTF8Encoding encoder = new UTF8Encoding(false);
+            StreamWriter writer = new StreamWriter(stream, encoder) { AutoFlush = true };
+            StreamReader reader = new StreamReader(stream, encoder);
+
 
             byte[] buffer = new byte[1024];
-            while (true)
+            try
             {
-                int bytesRead = stream.Read(buffer, 0, buffer.Length);
 
-                if (bytesRead == 0)
+                while (true)
                 {
-                    Console.WriteLine("Server closed the connection.");
-                    break;
+                    string? response = reader.ReadLine();
+
+                    if (response == null)
+                    {
+                        Console.WriteLine("Connection to the server was disconnected..");
+                        break;
+                    }
+
+                    string serverMessage = response;
+
+                    if (response == "END")
+                    {
+                        string? punchLine = reader.ReadLine();
+                        Console.WriteLine(punchLine);
+                        Console.WriteLine("Conversation finished.");
+                        break;
+                    }
+
+                    Console.WriteLine("Server: " + serverMessage);
+
+
+                    Console.Write("Your response: ");
+                    response = Console.ReadLine();
+
+                    if (response == null)
+                    {
+                        break;
+                    }
+
+                    writer.WriteLine(response);
                 }
-
-                string serverMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                Console.WriteLine("Server: " + serverMessage);
-
-                Console.Write("Your response: ");
-                string? response = Console.ReadLine();
-
-                if (string.IsNullOrWhiteSpace(response))
-                {
-                    continue;
-                }
-
-                byte[] data = Encoding.UTF8.GetBytes(response);
-                stream.Write(data, 0, data.Length);
+            } 
+            catch (IOException)
+            {
+                Console.WriteLine("Server closed the connection.");
             }
         }
     }

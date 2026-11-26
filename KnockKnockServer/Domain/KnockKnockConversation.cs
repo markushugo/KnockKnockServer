@@ -58,6 +58,7 @@ namespace KnockKnockServer.Domain
         response.Equals("who's there?", StringComparison.OrdinalIgnoreCase) ||
         response.Equals("whos there?", StringComparison.OrdinalIgnoreCase) ||
         response.Equals("who's there", StringComparison.OrdinalIgnoreCase) ||
+        response.Equals("who there", StringComparison.OrdinalIgnoreCase) ||
         response.Equals("whos there", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>Kontrollerer om klienten svarer med jokernes navn efterfulgt af "who".</summary>

@@ -14,6 +14,10 @@ namespace KnockKnockServer
     public class Program
     {
         private static int currentClients = 0;
+        private static List<TcpClient> connectedClients = new List<TcpClient>();
+        private static readonly object clientLock = new object();
+        private static bool isShuttingDown = false;
+
 
         static void Main(string[] args)
         {
@@ -34,11 +38,13 @@ namespace KnockKnockServer
 
 
             ServerOptions serverOptions;
+            JokeSelectionOptions jokeSelectionOptions;
+            JokesOptions jokesOptions;
             try
             {
-                ServerOptions serverOptions = host.Services.GetRequiredService<IOptions<ServerOptions>>().Value;
-                JokeSelectionOptions jokeSelectionOptions = host.Services.GetRequiredService<IOptions<JokeSelectionOptions>>().Value;
-                JokesOptions jokesOptions = host.Services.GetRequiredService<IOptions<JokesOptions>>().Value;
+                serverOptions = host.Services.GetRequiredService<IOptions<ServerOptions>>().Value;
+                jokeSelectionOptions = host.Services.GetRequiredService<IOptions<JokeSelectionOptions>>().Value;
+                jokesOptions = host.Services.GetRequiredService<IOptions<JokesOptions>>().Value;
             }
             catch (OptionsValidationException ex)
             {
@@ -68,30 +74,91 @@ namespace KnockKnockServer
             }
             else
             {
-                throw new InvalidOperationException("Invalid joke selection strategy specified in configuration.");
+                Console.WriteLine("Invalid joke selection strategy specified in configuration.");
+                return;
             }
 
 
-            int port = configuration.GetValue<int>("Server:Port");
 
-            TcpListener listener = new TcpListener(IPAddress.Any, port);
+            TcpListener listener = new TcpListener(IPAddress.Any, serverOptions.Port);
+
             listener.Start();
+
+            Console.CancelKeyPress += (sender, e) =>
+            {
+                e.Cancel = true; // Prevent the process from terminating immediately
+                Console.WriteLine("Shutting down server...");
+                lock (clientLock)
+                {
+                    isShuttingDown = true;
+                    foreach (var client in connectedClients)
+                    {
+                        client.Close();
+                    }
+                    connectedClients.Clear();
+                }
+                listener.Stop();
+            };
+            
+
 
             Console.WriteLine("Server started. Waiting for client...");
             
             while (true)
             {
-                TcpClient client = listener.AcceptTcpClient();
+                TcpClient client;
+                try
+                {
+                    client = listener.AcceptTcpClient();
+                }
+                catch (SocketException)
+                {
+                    lock (clientLock)
+                    {
+                        if (isShuttingDown == true)
+                        {
+                            break;
+                        }
+                    }
+                    throw;
+                }
+                catch (InvalidOperationException)
+                {
+                    lock (clientLock)
+                    {
+                        if (isShuttingDown == true)
+                        {
+                            break;
+                        }
+                    }
+                    throw;
+                }
+
                 if (Volatile.Read(ref currentClients) >= maxClients)
                 {
                     Console.WriteLine("Maximum number of clients reached. Waiting for a client to disconnect...");
                     client.Close();
                     continue;
                 }
+
                 KnockKnockJoke noClue = jokeSelector.SelectJoke();
                 Thread handleClientThread = new Thread(() => HandleClient(client, noClue));
                 Interlocked.Increment(ref currentClients);
+
+                lock (clientLock)
+                {
+                    if (isShuttingDown)
+                    {
+                        Console.WriteLine("Server is shutting down. Rejecting new client connection.");
+                        client.Close();
+                        Interlocked.Decrement(ref currentClients);
+                        break;
+                    }
+
+                    connectedClients.Add(client);
+                }
                 handleClientThread.Start();
+                Console.WriteLine("Client connected.");
             }
 
             listener.Stop();
@@ -100,42 +167,70 @@ namespace KnockKnockServer
         {
             try
             {
+                UTF8Encoding encoder = new UTF8Encoding(false);
                 NetworkStream stream = client.GetStream();
 
-                
+                StreamWriter writer = new StreamWriter(stream, encoder) { AutoFlush = true };
+                StreamReader reader = new StreamReader(stream, encoder);
+
 
                 KnockKnockConversation conversation = new KnockKnockConversation(joke);
 
                 string message = "Knock Knock!";
-                byte[] messageBytes = Encoding.UTF8.GetBytes(message);
-                stream.Write(messageBytes, 0, messageBytes.Length);
+                writer.WriteLine(message);
+
 
 
                 while (conversation.State != ConversationState.Finished)
                 {
-                    byte[] buffer = new byte[1024];
+                    var result = reader.ReadLine();
 
-                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                    if (bytesRead == 0)
+                    // Check if the client has closed the connection
+                    if (result == null)
                     {
-                        Console.WriteLine("Client closed the connection.");
+                        Console.WriteLine($"Client {currentClients} closed the connection.");
                         break;
                     }
 
-                    string clientResponse = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
+                    string clientResponse = result.Trim();
                     string serverResponse = conversation.ProcessResponse(clientResponse);
-                    byte[] responseBytes = Encoding.UTF8.GetBytes(serverResponse);
-                    stream.Write(responseBytes, 0, responseBytes.Length);
+
+
+                    if (ConversationState.Finished == conversation.State)
+                    {
+                        Console.WriteLine("Client finished the conversation.");
+                        writer.WriteLine("END");
+                    }
+
+                    writer.WriteLine(serverResponse);
+
                 }
             }
+
             catch (IOException ex)
             {
-                Console.WriteLine($"Client Disconected {ex.Message}");
+                Console.WriteLine("Connection to client closed : " + ex.Message);
+            }
+            catch (ObjectDisposedException)
+            {
+                lock  (clientLock)
+                {
+                    if (isShuttingDown == false)
+                    {
+                        throw;
+                    }
+                }
             }
             finally
             {
+                Console.WriteLine("Connection to client closed.");
+
                 Interlocked.Decrement(ref currentClients);
                 client.Close();
+                lock (clientLock)
+                {
+                    connectedClients.Remove(client);
+                }
             }
 
         }
