@@ -34,6 +34,15 @@ namespace KnockKnockServer
             hostBuilder.Services.Configure<JokesOptions>(configuration.GetSection("Jokes"));
             hostBuilder.Services.AddOptions<JokesOptions>().ValidateDataAnnotations();
 
+            hostBuilder.Services.AddSingleton<IJokeSelector>(services => 
+            {
+                var selectionOptions = services.GetRequiredService<IOptions<JokeSelectionOptions>>().Value;
+                var jokeOptions = services.GetRequiredService<IOptions<JokesOptions>>().Value;
+
+
+            });
+            
+
             var host = hostBuilder.Build();
 
 
@@ -199,7 +208,7 @@ namespace KnockKnockServer
                     if (ConversationState.Finished == conversation.State)
                     {
                         Console.WriteLine("Client finished the conversation.");
-                        writer.WriteLine("END");
+                        writer.WriteLine("THEMEGASECRETKEYTOCLOSE");
                     }
 
                     writer.WriteLine(serverResponse);

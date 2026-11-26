@@ -40,7 +40,7 @@ namespace KnockKnockClient
 
                     string serverMessage = response;
 
-                    if (response == "END")
+                    if (response == "THEMEGASECRETKEYTOCLOSE")
                     {
                         string? punchLine = reader.ReadLine();
                         Console.WriteLine(punchLine);
